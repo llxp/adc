@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
@@ -15,7 +14,7 @@ import (
 // Active Direcotry client.
 type Client struct {
 	Config *Config
-	ldap   ldap.Client
+	Ldap   ldap.Client
 	logger Logger
 }
 
@@ -51,27 +50,95 @@ func (cl *Client) Connect() error {
 		}
 	}
 
-	cl.ldap = conn
+	cl.Ldap = conn
 
 	return nil
 }
 
+// Connect returns an open connection to an Active Directory server or an error if one occurred.
 func (cl *Client) connect() (ldap.Client, error) {
-	var dialOpts []ldap.DialOpt
-	if strings.HasPrefix(cl.Config.URL, "ldaps://") {
-		dialOpts = append(
-			dialOpts, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: cl.Config.InsecureTLS}),
-		)
+	server := cl.Config.Server
+	port := cl.Config.Port
+	switch cl.Config.Security {
+	case SecurityNone:
+		conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+		if err != nil {
+			return nil, fmt.Errorf("Connection error: %w", err)
+		}
+		return conn, nil
+	case SecurityTLS:
+		conn, err := ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), &tls.Config{ServerName: server, RootCAs: cl.Config.RootCAs})
+		if err != nil {
+			return nil, fmt.Errorf("Connection error: %w", err)
+		}
+		return conn, nil
+	case SecurityStartTLS:
+		conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+		if err != nil {
+			return nil, fmt.Errorf("Connection error: %w", err)
+		}
+		err = conn.StartTLS(&tls.Config{ServerName: server, RootCAs: cl.Config.RootCAs})
+		if err != nil {
+			return nil, fmt.Errorf("Connection error: %w", err)
+		}
+		return conn, nil
+	case SecurityInsecureTLS:
+		conn, err := ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), &tls.Config{ServerName: server, InsecureSkipVerify: true})
+		if err != nil {
+			return nil, fmt.Errorf("Connection error: %w", err)
+		}
+		return conn, nil
+	case SecurityInsecureStartTLS:
+		conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+		if err != nil {
+			return nil, fmt.Errorf("Connection error: %w", err)
+		}
+		err = conn.StartTLS(&tls.Config{ServerName: server, InsecureSkipVerify: true})
+		if err != nil {
+			return nil, fmt.Errorf("Connection error: %w", err)
+		}
+		return conn, nil
+	default:
+		return nil, errors.New("Configuration error: invalid SecurityType")
 	}
-	return ldap.DialURL(cl.Config.URL, dialOpts...)
 }
+
+// Bind authenticates the connection with the given userPrincipalName and password
+// and returns the result or an error if one occurred.
+func (cl *Client) Bind(upn, password string) (bool, error) {
+	if password == "" {
+		return false, nil
+	}
+
+	err := cl.Ldap.Bind(upn, password)
+	if err != nil {
+		if e, ok := err.(*ldap.Error); ok {
+			if e.ResultCode == ldap.LDAPResultInvalidCredentials {
+				return false, nil
+			}
+		}
+		return false, fmt.Errorf("Bind error (%s): %w", upn, err)
+	}
+
+	return true, nil
+}
+
+// func (cl *Client) connect() (ldap.Client, error) {
+// 	var dialOpts []ldap.DialOpt
+// 	if strings.HasPrefix(cl.Config.URL, "ldaps://") {
+// 		dialOpts = append(
+// 			dialOpts, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: cl.Config.InsecureTLS}),
+// 		)
+// 	}
+// 	return ldap.DialURL(cl.Config.URL, dialOpts...)
+// }
 
 // Closes connection to AD.
 func (cl *Client) Disconnect() error {
-	if cl.ldap == nil {
+	if cl.Ldap == nil {
 		return nil
 	}
-	return cl.ldap.Close()
+	return cl.Ldap.Close()
 }
 
 // Checks connections to AD and tries to reconnect if the connection is lost.
@@ -126,7 +193,7 @@ func (cl *Client) Reconnect(ctx context.Context, tickerDuration time.Duration, m
 // Returns nil if no entries found.
 // Returns 'ErrTooManyEntriesFound' error if entries more that one.
 func (cl *Client) searchEntry(req *ldap.SearchRequest) (*ldap.Entry, error) {
-	result, err := cl.ldap.Search(req)
+	result, err := cl.Ldap.Search(req)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +208,7 @@ func (cl *Client) searchEntry(req *ldap.SearchRequest) (*ldap.Entry, error) {
 
 // SearchEntries Perfroms search for ldap entries.
 func (cl *Client) searchEntries(req *ldap.SearchRequest) ([]*ldap.Entry, error) {
-	result, err := cl.ldap.Search(req)
+	result, err := cl.Ldap.Search(req)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +219,7 @@ func (cl *Client) searchEntries(req *ldap.SearchRequest) ([]*ldap.Entry, error) 
 func (cl *Client) updateAttribute(dn string, attribute string, values []string) error {
 	mr := ldap.NewModifyRequest(dn, nil)
 	mr.Replace(attribute, values)
-	return cl.ldap.Modify(mr)
+	return cl.Ldap.Modify(mr)
 }
 
 // Tries to authorise in AcitveDirecotry by provided DN and password and return error if failed.
@@ -177,10 +244,10 @@ func (cl *Client) createEntry(dn string, attributes []ldap.Attribute) error {
 		DN:         dn,
 		Attributes: attributes,
 	}
-	return cl.ldap.Add(req)
+	return cl.Ldap.Add(req)
 }
 
 func (cl *Client) deleteEntry(dn string) error {
 	cl.logger.Debugf("Deleting: '%s'", dn)
-	return cl.ldap.Del(&ldap.DelRequest{DN: dn})
+	return cl.Ldap.Del(&ldap.DelRequest{DN: dn})
 }

@@ -17,7 +17,9 @@ func (l *myLogger) Debugf(template string, args ...interface{}) {
 
 func mainCustomLogger() {
 	cfg := &adc.Config{
-		URL: "ldaps://my.ad.site:636",
+		Server:   "my.ad.site",
+		Port:     636,
+		Security: adc.SecurityTLS,
 		Bind: &adc.BindAccount{
 			DN:       "CN=admin,DC=company,DC=com",
 			Password: "***",

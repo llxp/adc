@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-ldap/ldap/v3"
+	"golang.org/x/text/encoding/unicode"
 )
 
 // Active Direcotry user.
@@ -197,8 +198,13 @@ func (cl *Client) CreateUser(args CreateUserArgs) error {
 	if _, ok := args.Attributes["cn"]; !ok {
 		args.Attributes["cn"] = []string{args.Id}
 	}
-	if _, ok := args.Attributes["userPassword"]; !ok {
-		args.Attributes["userPassword"] = []string{args.Password}
+	utf16 := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM)
+	encoded, err := utf16.NewEncoder().String(fmt.Sprintf(`"%s"`, args.Password))
+	if err != nil {
+		return fmt.Errorf("Password error: Unable to encode password: %w", err)
+	}
+	if _, ok := args.Attributes["unicodePwd"]; !ok {
+		args.Attributes["unicodePwd"] = []string{encoded}
 	}
 
 	for k, v := range args.Attributes {
@@ -214,11 +220,31 @@ func (cl *Client) CreateUser(args CreateUserArgs) error {
 func (cl *Client) DeleteUser(userId string) error {
 	entry, err := cl.GetUser(GetUserArgs{Id: userId})
 	if err != nil {
-		return fmt.Errorf("Failed to get group: %w", err)
+		return fmt.Errorf("Failed to get user: %w", err)
 	}
 	if entry == nil {
 		cl.logger.Debugf("User '%s' already doesn't exist", userId)
 		return nil
 	}
 	return cl.deleteEntry(entry.DN)
+}
+
+// ModifyDNPassword sets a new password for the given user or returns an error if one occurred.
+// ModifyDNPassword is used for resetting user passwords using administrative privileges.
+func (cl *Client) ModifyDNPassword(dn, newPasswd string) error {
+	utf16 := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM)
+	encoded, err := utf16.NewEncoder().String(fmt.Sprintf(`"%s"`, newPasswd))
+	if err != nil {
+		return fmt.Errorf("Password error: Unable to encode password: %w", err)
+	}
+
+	req := ldap.NewModifyRequest(dn, nil)
+	req.Replace("unicodePwd", []string{encoded})
+
+	err = cl.Ldap.Modify(req)
+	if err != nil {
+		return fmt.Errorf("Password error: Unable to modify password: %w", err)
+	}
+
+	return nil
 }

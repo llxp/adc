@@ -38,7 +38,8 @@ func Test_AppendGroupsAttributes(t *testing.T) {
 func Test_Config(t *testing.T) {
 	t.Run("CustomConfigPartial", func(t *testing.T) {
 		cfg := &adc.Config{
-			URL: "ldaps://fakeurl:636",
+			Server: "fakeurl",
+			Port:   636,
 			Bind: &adc.BindAccount{
 				DN:       "some",
 				Password: "fake",
@@ -55,7 +56,7 @@ func Test_Config(t *testing.T) {
 		cl := adc.New(cfg)
 		require.NotNil(t, cl.Config)
 
-		require.Equal(t, cfg.URL, cl.Config.URL)
+		require.Equal(t, cfg.Server, cl.Config.Server)
 		require.Equal(t, cfg.InsecureTLS, cl.Config.InsecureTLS)
 		require.Equal(t, cfg.SearchBase, cl.Config.SearchBase)
 		require.Equal(t, cfg.Bind, cl.Config.Bind)
@@ -65,7 +66,8 @@ func Test_Config(t *testing.T) {
 
 	t.Run("CustomConfigAll", func(t *testing.T) {
 		cfg := &adc.Config{
-			URL:         "ldaps://fakeurl:636",
+			Server:      "fakeurl",
+			Port:        636,
 			InsecureTLS: true,
 			Timeout:     5 * time.Second,
 			Bind: &adc.BindAccount{
@@ -95,7 +97,8 @@ func Test_Config(t *testing.T) {
 		require.NotNil(t, cl.Config)
 
 		require.Equal(t, cfg.Timeout, cl.Config.Timeout)
-		require.Equal(t, cfg.URL, cl.Config.URL)
+		require.Equal(t, cfg.Server, cl.Config.Server)
+		require.Equal(t, cfg.Port, cl.Config.Port)
 		require.Equal(t, cfg.InsecureTLS, cl.Config.InsecureTLS)
 		require.Equal(t, cfg.SearchBase, cl.Config.SearchBase)
 		require.Equal(t, cfg.Bind, cl.Config.Bind)

@@ -121,7 +121,9 @@ func Test_Client_CheckAuthByDN(t *testing.T) {
 		require.NotNil(t, cl)
 		require.NoError(t, cl.Disconnect())
 
-		cl.Config.URL = "ldaps://fakeurl:636"
+		cl.Config.Server = "fakeurl"
+		cl.Config.Port = 636
+		cl.Config.Security = adc.SecurityTLS
 
 		require.Error(t, cl.CheckAuthByDN(tClient.Config.Bind.DN, tClient.Config.Bind.Password))
 	})

@@ -28,7 +28,9 @@ func (l *logger) Debugf(template string, args ...interface{}) {
 
 func getClientConfig() adc.Config {
 	return adc.Config{
-		URL:         "ldaps://127.0.0.1:636",
+		Server:      "127.0.0.1",
+		Port:        389,
+		Security:    adc.SecurityTLS,
 		SearchBase:  "CN=Users,DC=adc,DC=dev",
 		InsecureTLS: true,
 		Bind: &adc.BindAccount{

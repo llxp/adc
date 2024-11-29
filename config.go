@@ -1,18 +1,34 @@
 package adc
 
 import (
+	"crypto/x509"
 	"time"
 )
 
+// SecurityType specifies the type of security to use when connecting to an Active Directory Server.
+type SecurityType int
+
+// Security will default to SecurityNone if not given.
+const (
+	SecurityNone SecurityType = iota
+	SecurityTLS
+	SecurityStartTLS
+	SecurityInsecureTLS
+	SecurityInsecureStartTLS
+)
+
 type Config struct {
-	// LDAP server URL. Examle 'ldaps://cl.local:636'
-	URL string `json:"url"`
+	Server string `json:"server"`
+	Port   int    `json:"port"`
+	// RootCAs is a set of root certificate authorities to use when connecting to the server.
+	RootCAs *x509.CertPool
 	// Use insecure SSL connection.
 	InsecureTLS bool `json:"insecure_tls"`
 	// Time limit for requests.
 	Timeout time.Duration
 	// Base OU for search requests.
-	SearchBase string `json:"search_base"`
+	SearchBase string       `json:"search_base"`
+	Security   SecurityType `json:"security"`
 
 	// Bind account info.
 	Bind *BindAccount `json:"bind"`
@@ -103,7 +119,9 @@ func populateConfig(cfg *Config) *Config {
 		return result
 	}
 
-	result.URL = cfg.URL
+	result.Server = cfg.Server
+	result.Port = cfg.Port
+	result.Security = cfg.Security
 	result.InsecureTLS = cfg.InsecureTLS
 	result.SearchBase = cfg.SearchBase
 	result.Users.SearchBase = cfg.SearchBase
